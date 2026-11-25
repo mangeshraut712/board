@@ -346,6 +346,20 @@ export type ExplainPrincipal = {
   app?: string
 }
 
+/** Sleeps for `ms`, or until `signal` aborts. */
+function pause(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve()
+    const done = () => {
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', done)
+      resolve()
+    }
+    const timer = setTimeout(done, ms)
+    signal?.addEventListener('abort', done, { once: true })
+  })
+}
+
 export function createBoardClient(options: ClientOptions) {
   const base = options.url.replace(/\/+$/, '')
   // Browsers reject a bare `fetch` detached from `window` ("Illegal invocation").
@@ -910,7 +924,7 @@ export function createBoardClient(options: ClientOptions) {
           // A refusal isn't an outage: what the board doesn't do (501) is said, as what the caller got wrong is, and not retried.
       if (error instanceof BoardError && (error.status === 501 || (error.status >= 400 && error.status < 500))) throw error
           state.failed()
-          await new Promise((r) => setTimeout(r, Math.min(30_000, 500 * 2 ** failures++)))
+          await pause(Math.min(30_000, 500 * 2 ** failures++), opts.signal)
           continue
         }
         failures = 0
@@ -923,7 +937,7 @@ export function createBoardClient(options: ClientOptions) {
         } catch (error) {
           if (opts.signal?.aborted) return
           state.failed()
-          await new Promise((r) => setTimeout(r, Math.min(30_000, 500 * 2 ** failures++)))
+          await pause(Math.min(30_000, 500 * 2 ** failures++), opts.signal)
         }
       }
     },
@@ -942,7 +956,7 @@ export function createBoardClient(options: ClientOptions) {
         if (error instanceof Error && error.name === 'AbortError') throw error
         const backoff = Math.min(30_000, 500 * 2 ** failures++)
         if (Date.now() + backoff >= deadline) throw error
-        await new Promise((r) => setTimeout(r, backoff))
+        await pause(backoff, opts.signal)
       }
       let after = query.after
       while (after === undefined && !opts.signal?.aborted) {

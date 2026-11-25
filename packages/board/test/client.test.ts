@@ -179,6 +179,14 @@ describe('a handle on a board over http()', () => {
     status = 403
     await expect(client.wait({ re: root.id, after: root.id }, { timeout: '5s' })).rejects.toMatchObject({ status: 403 })
     expect(outage).toBe(0)
+    // Aborting during a backoff stops the wait then, not when the backoff would have ended.
+    outage = 100
+    status = 502
+    const controller = new AbortController()
+    const started = Date.now()
+    setTimeout(() => controller.abort(), 1500)
+    expect(await client.wait({ re: root.id, after: root.id }, { timeout: '1m', signal: controller.signal })).toBeNull()
+    expect(Date.now() - started).toBeLessThan(2500)
   }, 15_000)
 
   it('streams live events and resumes after the server closes the stream', async () => {
