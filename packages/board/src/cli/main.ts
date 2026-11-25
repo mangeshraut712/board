@@ -2569,6 +2569,18 @@ async function tasks(args: string[]): Promise<number> {
     return 0
   }
 
+  // An option only another verb takes is refused before the task changes, not dropped: `complete --file` would settle it with no result.
+  const spec = specOf('tasks')?.subcommands?.find((sub) => sub.name === verb)
+  const takes = new Set([...(spec?.options ?? []), ...(spec?.filters ? filterOptions : []), ...globalOptions].map((option) => option.name))
+  const foreign = spec && ordered.find((option) => !takes.has(option.name))
+  if (foreign) {
+    // A note too long for an argument goes in a reply in the task's thread, as when the board refuses one.
+    const note = foreign.name === 'file' && ['complete', 'fail', 'block', 'cancel'].includes(verb)
+    const why = note ? ` Its ${verb === 'complete' ? 'result' : 'reason'} is an argument, a line or two.` : ''
+    const next = note ? noteRecovery(verb === 'complete' ? 'report' : 'detail') : [{ instruction: 'See its options', argv: [...cli(), 'tasks', verb, '--help'] }]
+    throw usage(`Unknown option --${foreign.name} for ${named()} tasks ${verb}.${why}`, { reason: 'unknown_option', next })
+  }
+
   if (verb === 'create') {
     const [target, body, extra] = rest
     if (!target) throw usage("Missing a channel to start a task in, or a thread's ID to make one of.", { reason: 'missing_arguments' })

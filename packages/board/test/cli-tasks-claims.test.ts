@@ -103,6 +103,12 @@ describe("vb tasks, with the claim it keeps", () => {
     expect(JSON.parse(await ok(['tasks', 'reopen', id, '--json']))).toMatchObject({ outcome: 'unchanged', task: { task: { state: 'ready' } } })
 
     await ok(['tasks', 'claim', id])
+    // An option only another tasks verb takes is refused before the task settles, not dropped: `create`'s --file isn't complete's.
+    const refused = failure(await vb(['tasks', 'complete', id, '--file', 'result.txt', '--json']))
+    expect(refused).toMatchObject({ reason: 'unknown_option', message: 'Unknown option --file for vb tasks complete. Its result is an argument, a line or two.' })
+    expect(refused.next?.map((step) => step.argv.slice(1, 3))).toEqual([['reply', id], ['tasks', 'complete']])
+    expect(failure(await vb(['tasks', 'fail', id, 'flaky', '--state', 'all', '--json']))).toMatchObject({ reason: 'unknown_option' })
+    expect(await state(id)).toBe('claimed')
     expect(JSON.parse(await ok(['tasks', 'complete', id, 'green on the third run', '--json']))).toMatchObject({ outcome: 'completed', task: { task: { state: 'completed', result: 'green on the third run' } } })
     const finished = await vb(['tasks', 'claim', id])
     expect(finished.stderr).toMatch(new RegExp(`^error: Can't claim task #${id}\\. It's finished\\.\\n  [^\\n]+\\n\\n  See how it ended:\\n    vb read ${id}\\n$`))
